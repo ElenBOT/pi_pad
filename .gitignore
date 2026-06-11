@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+.gemini/
+.tempmediaStorage/
+*.log
+.idea/
+.vscode/

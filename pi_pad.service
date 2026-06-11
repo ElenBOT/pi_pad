@@ -1,0 +1,13 @@
+[Unit]
+Description=Pi Pad - Web Touchpad Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/op1/pi_pad
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

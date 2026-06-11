@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pi Pad - Orange Pi Web Touchpad</title>
+    <meta name="description" content="Control your host PC with real-time touchpad gestures over your Orange Pi.">
+    
+    <!-- iOS / PWA Fullscreen standalone support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/static/manifest.json">
+
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="title-section">
+            <h1>Pi Pad</h1>
+        </div>
+        <div class="status-badge" id="conn-status">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">Connecting...</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Touchpad -->
+        <div id="touchpad-container">
+            <!-- Floating Exit Fullscreen Button (Visible only in custom fullscreen) -->
+            <button id="exit-fullscreen-btn" title="Exit Fullscreen">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+            <!-- Floating Keyboard Toggle Button (Visible only in custom fullscreen) -->
+            <button id="keyboard-fs-btn" title="Toggle Keyboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
+                    <line x1="6" y1="8" x2="6" y2="8.01"/>
+                    <line x1="10" y1="8" x2="10" y2="8.01"/>
+                    <line x1="14" y1="8" x2="14" y2="8.01"/>
+                    <line x1="18" y1="8" x2="18" y2="8.01"/>
+                    <line x1="6" y1="12" x2="6" y2="12.01"/>
+                    <line x1="10" y1="12" x2="10" y2="12.01"/>
+                    <line x1="14" y1="12" x2="14" y2="12.01"/>
+                    <line x1="18" y1="12" x2="18" y2="12.01"/>
+                    <line x1="7" y1="16" x2="17" y2="16"/>
+                </svg>
+            </button>
+            <div id="touchpad">
+                <!-- Dashed Cross dividing into 4 quadrants -->
+                <div class="cross-line horizontal"></div>
+                <div class="cross-line vertical"></div>
+                
+                <div class="touchpad-instructions">
+                    <svg class="gesture-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z" />
+                    </svg>
+                    <p>Tap / Drag to control cursor</p>
+                    <p style="font-size: 0.75rem; margin-top: 4px; color: rgba(0,0,0,0.4);">
+                        Two fingers: Right-click / Scroll<br>
+                        Double-tap & hold: Drag lock
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings & Controls -->
+        <div class="control-panel">
+            <!-- 2x2 Grid of Actions -->
+            <div class="actions-grid">
+                <button class="btn-action" id="enable-hid-btn" style="padding: 10px 8px;">
+                    <span>Init USB HID</span>
+                </button>
+                <button class="btn-primary" id="toggle-keyboard-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
+                        <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10"/>
+                    </svg>
+                    <span>Keypad</span>
+                </button>
+                <button class="btn-secondary" id="recenter-btn">
+                    <span>Center</span>
+                </button>
+                <button class="btn-secondary" id="fullscreen-btn">
+                    <span>Fullscreen</span>
+                </button>
+            </div>
+
+            <!-- Settings Sliders -->
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Sensitivity</span>
+                    <span class="value" id="sens-val" style="cursor: pointer; text-decoration: underline dotted; padding: 2px 6px; background: #f1f5f9; font-family: monospace;">2.0</span>
+                </div>
+                <div class="slider-input-wrapper">
+                    <input type="range" id="sensitivity" min="1" max="5" step="0.5" value="2.0">
+                </div>
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Scroll Speed</span>
+                    <span class="value" id="scroll-val">1.0</span>
+                </div>
+                <div class="slider-input-wrapper">
+                    <input type="range" id="scroll-speed" min="0.2" max="3.0" step="0.1" value="1.0">
+                </div>
+            </div>
+
+            <!-- Virtual Keyboard Panel -->
+            <div id="keyboard-panel">
+                <textarea id="keyboard-input" placeholder="Type here..." rows="2" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+                <div class="kbd-shortcuts-row">
+                    <button type="button" class="btn-shortcut" id="shortcut-shift">Shift</button>
+                    <button type="button" class="btn-shortcut" id="shortcut-copy">Copy</button>
+                    <button type="button" class="btn-shortcut" id="shortcut-paste">Paste</button>
+                </div>
+                <div class="kbd-settings-row">
+                    <div class="mode-selector">
+                        <button type="button" class="mode-btn active" id="mode-realtime">Real-time</button>
+                        <button type="button" class="mode-btn" id="mode-buffer">Buffer</button>
+                    </div>
+                    <div class="kbd-actions">
+                        <button class="btn-action success" id="send-btn" style="display: none; padding: 6px 16px; font-size: 0.75rem;">Send</button>
+                        <button class="btn-secondary" id="close-kbd-panel-btn" style="padding: 6px 12px; font-size: 0.75rem;">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Fullscreen / Standalone App Setup Instructions Modal -->
+    <div id="info-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Fullscreen Web App Setup</h2>
+                <button id="close-modal-btn" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="instructions-group">
+                    <h3>🍎 iPhone / iPad (iOS Safari)</h3>
+                    <ol>
+                        <li>Tap the <strong>Share</strong> button (box with an upward arrow) in the Safari toolbar.</li>
+                        <li>Scroll down and select <strong>"Add to Home Screen"</strong>.</li>
+                        <li>Give it a name and tap <strong>Add</strong> in the top-right corner.</li>
+                        <li>Launch <strong>Pi Pad</strong> from your phone's home screen. It will open in a clean, standalone full-screen window with no address bar!</li>
+                    </ol>
+                </div>
+                <hr style="border: none; border-top: 1px solid #cbd5e1; margin: 16px 0;">
+                <div class="instructions-group">
+                    <h3>🤖 Android (Chrome)</h3>
+                    <ol>
+                        <li>Tap the <strong>Menu</strong> icon (three vertical dots) in the top-right corner.</li>
+                        <li>Select <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong>.</li>
+                        <li>Open the newly installed app from your home screen to enjoy the borderless full-screen experience.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

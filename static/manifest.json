@@ -1,0 +1,9 @@
+{
+  "name": "Pi Pad",
+  "short_name": "Pi Pad",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a"
+}
