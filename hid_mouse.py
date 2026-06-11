@@ -95,6 +95,8 @@ class HIDController:
     def click(self, button):
         # Quick press and release
         self.set_button(button, True)
+        import time
+        time.sleep(0.01)  # 10ms delay for USB HID poll rate compatibility
         self.set_button(button, False)
 
     def trigger_scroll(self, direction):

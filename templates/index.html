@@ -50,6 +50,14 @@
                     <line x1="7" y1="16" x2="17" y2="16"/>
                 </svg>
             </button>
+            <!-- Floating Rotate Button (Visible only in custom fullscreen) -->
+            <button id="rotate-fs-btn" title="Rotate Pad">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M23 4v6h-6"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+            </button>
+
             <div id="touchpad">
                 <!-- Dashed Cross dividing into 4 quadrants -->
                 <div class="cross-line horizontal"></div>
@@ -118,6 +126,18 @@
                     <button type="button" class="btn-shortcut" id="shortcut-shift">Shift</button>
                     <button type="button" class="btn-shortcut" id="shortcut-copy">Copy</button>
                     <button type="button" class="btn-shortcut" id="shortcut-paste">Paste</button>
+                    <button type="button" class="btn-shortcut btn-arrow" id="arrow-left" title="Left">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <button type="button" class="btn-shortcut btn-arrow" id="arrow-up" title="Up">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+                    </button>
+                    <button type="button" class="btn-shortcut btn-arrow" id="arrow-down" title="Down">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <button type="button" class="btn-shortcut btn-arrow" id="arrow-right" title="Right">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
                 </div>
                 <div class="kbd-settings-row">
                     <div class="mode-selector">
@@ -162,6 +182,8 @@
             </div>
         </div>
     </div>
+
+
 
     <script src="/static/js/app.js"></script>
 </body>

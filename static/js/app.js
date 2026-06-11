@@ -50,13 +50,21 @@ let isMoving = false;
 // Double tap & drag tracking (for left-click drag)
 let lastTapTime = 0;
 let isDragging = false; 
-let dragStartPending = false;
+let clickDelayTimer = null;
+const DOUBLE_TAP_TIMEOUT = 220; // Time window in ms for detecting double taps
 
 // Multi-touch tracking
-let startTwoFingerDist = 0;
+let maxTouches = 0;
+let hasMovedTwoFingers = false;
+let twoFingerStartTouchX = 0;
+let twoFingerStartTouchY = 0;
+let lastTwoFingerX = 0;
 let lastTwoFingerY = 0;
 let scrollAccumulator = 0;
 let lastMultiTouchTime = 0;
+
+// Rotation settings
+let rotationAngle = 0; // 0, 90, 180, 270
 
 // Reconnection config
 const WS_SCHEME = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -85,10 +93,14 @@ function connectWebSocket() {
         statusDot.classList.remove('connected');
         statusText.textContent = "Disconnected";
         
-        // Reset dragging state if socket closes
+        // Reset dragging state and timer if socket closes
         if (isDragging) {
             isDragging = false;
             touchpad.classList.remove('active');
+        }
+        if (clickDelayTimer) {
+            clearTimeout(clickDelayTimer);
+            clickDelayTimer = null;
         }
 
         if (!reconnectTimer) {
@@ -140,6 +152,17 @@ function showRipple(e, type) {
     }, 4000);
 }
 
+function rotateCoordinates(dx, dy) {
+    if (rotationAngle === 90) {
+        return { rx: dy, ry: -dx };
+    } else if (rotationAngle === 180) {
+        return { rx: -dx, ry: -dy };
+    } else if (rotationAngle === 270) {
+        return { rx: -dy, ry: dx };
+    }
+    return { rx: dx, ry: dy };
+}
+
 // Touch Event Handlers
 touchpad.addEventListener('touchstart', (e) => {
     e.preventDefault();
@@ -151,32 +174,53 @@ touchpad.addEventListener('touchstart', (e) => {
         instructions.classList.add('hidden');
     }
 
+    const isSessionStart = (touches.length - e.changedTouches.length === 0);
+    if (isSessionStart) {
+        touchStartTime = now;
+        maxTouches = touches.length;
+        hasMovedTwoFingers = false;
+    } else {
+        maxTouches = Math.max(maxTouches, touches.length);
+    }
+
     if (touches.length === 1) {
         const touch = touches[0];
         touchStartX = touch.clientX;
         touchStartY = touch.clientY;
         lastX = touchStartX;
         lastY = touchStartY;
-        touchStartTime = now;
         isMoving = false;
 
-        // Check for double tap (within 300ms) to start dragging (tap-and-hold)
-        const timeSinceLastTap = now - lastTapTime;
-        if (timeSinceLastTap < 300 && timeSinceLastTap > 50) {
-            dragStartPending = true;
-        } else {
-            dragStartPending = false;
+        // Check if a single click is pending from a previous tap
+        if (clickDelayTimer) {
+            clearTimeout(clickDelayTimer);
+            clickDelayTimer = null;
+            isDragging = true;
+            touchpad.classList.add('active');
+            sendEvent({ type: "button", button: "left", state: "down" });
         }
 
     } else if (touches.length >= 2) {
         lastMultiTouchTime = now;
+        // If a single click was pending, cancel it since they are using multiple fingers
+        if (clickDelayTimer) {
+            clearTimeout(clickDelayTimer);
+            clickDelayTimer = null;
+        }
+
         // Prepare for scroll
         const touch1 = touches[0];
         const touch2 = touches[1];
+        lastTwoFingerX = (touch1.clientX + touch2.clientX) / 2;
         lastTwoFingerY = (touch1.clientY + touch2.clientY) / 2;
+
+        if (touches.length === 2) {
+            twoFingerStartTouchX = lastTwoFingerX;
+            twoFingerStartTouchY = lastTwoFingerY;
+        }
+
         scrollAccumulator = 0;
         
-        // If we were dragging, release drag
         if (isDragging) {
             sendEvent({ type: "button", button: "left", state: "up" });
             isDragging = false;
@@ -199,24 +243,21 @@ touchpad.addEventListener('touchmove', (e) => {
             return;
         }
 
-        const dx = touch.clientX - lastX;
-        const dy = touch.clientY - lastY;
+        let dx = touch.clientX - lastX;
+        let dy = touch.clientY - lastY;
         
-        // Check if movement is significant
+        // Rotate coordinate differences based on touchpad rotation settings
+        const rotated = rotateCoordinates(dx, dy);
+        dx = rotated.rx;
+        dy = rotated.ry;
+
+        // Check if movement is significant (reduced from 5px to 2px for immediate response)
         const totalDist = Math.hypot(touch.clientX - touchStartX, touch.clientY - touchStartY);
-        if (totalDist > 5) {
+        if (totalDist > 2) {
             isMoving = true;
         }
 
-        // If tap-and-hold is pending, start drag lock
-        if (dragStartPending && isMoving && !isDragging) {
-            isDragging = true;
-            dragStartPending = false;
-            touchpad.classList.add('active');
-            sendEvent({ type: "button", button: "left", state: "down" });
-        }
-
-        // Send move event
+        // Always send move event so the cursor remains responsive
         sendEvent({
             type: "move",
             dx: dx,
@@ -231,30 +272,40 @@ touchpad.addEventListener('touchmove', (e) => {
         lastMultiTouchTime = Date.now();
         const touch1 = touches[0];
         const touch2 = touches[1];
+        const currentTwoFingerX = (touch1.clientX + touch2.clientX) / 2;
         const currentTwoFingerY = (touch1.clientY + touch2.clientY) / 2;
-        const dy = currentTwoFingerY - lastTwoFingerY;
+        
+        const deltaX = currentTwoFingerX - lastTwoFingerX;
+        const deltaY = currentTwoFingerY - lastTwoFingerY;
 
-        // Accumulate scroll distance
-        scrollAccumulator += dy;
+        // Rotate scroll delta
+        const rotatedScroll = rotateCoordinates(deltaX, deltaY);
+
+        // Track total movement distance of two fingers since start to decide if it's a scroll or a tap
+        const distMoved = Math.hypot(currentTwoFingerX - twoFingerStartTouchX, currentTwoFingerY - twoFingerStartTouchY);
+        if (distMoved > 8) {
+            hasMovedTwoFingers = true;
+        }
+
+        // Accumulate scroll distance using the rotated Y delta
+        scrollAccumulator += rotatedScroll.ry;
 
         // Scroll threshold (pixels required to trigger one scroll step)
-        // Scaled by scrollSpeed: larger scrollSpeed means smaller threshold (more sensitive)
         const threshold = Math.max(5, 30 / scrollSpeed);
 
         if (Math.abs(scrollAccumulator) >= threshold) {
-            // Determine scroll direction
-            // Natural scroll: dragging fingers down scrolls content down (sends key down)
-            const direction = scrollAccumulator > 0 ? "down" : "up";
+            // Natural Scroll: dragging fingers DOWN scrolls content UP, and vice versa
+            const direction = scrollAccumulator > 0 ? "up" : "down";
             sendEvent({
                 type: "scroll",
                 direction: direction
             });
-            // Subtract threshold from accumulator
             scrollAccumulator = scrollAccumulator > 0 
                 ? scrollAccumulator - threshold 
                 : scrollAccumulator + threshold;
         }
 
+        lastTwoFingerX = currentTwoFingerX;
         lastTwoFingerY = currentTwoFingerY;
     }
 });
@@ -264,48 +315,61 @@ touchpad.addEventListener('touchend', (e) => {
     const now = Date.now();
     const touches = e.touches;
 
-    if (e.changedTouches.length > 0) {
-        const changedTouch = e.changedTouches[0];
-        const moveDist = Math.hypot(changedTouch.clientX - touchStartX, changedTouch.clientY - touchStartY);
+    if (touches.length === 0) {
         const duration = now - touchStartTime;
 
-        // Single Finger Release
-        if (touches.length === 0) {
+        if (maxTouches === 1) {
+            const changedTouch = e.changedTouches[0];
+            const moveDist = Math.hypot(changedTouch.clientX - touchStartX, changedTouch.clientY - touchStartY);
+
             if (isDragging) {
                 // If dragging, release the left button
                 sendEvent({ type: "button", button: "left", state: "up" });
                 isDragging = false;
                 touchpad.classList.remove('active');
                 lastTapTime = 0; // Prevent immediate double tap triggers
+                
+                // If the user did not move during this drag gesture, it means it was a quick double-click
+                if (!isMoving) {
+                    sendEvent({ type: "click", button: "left" });
+                }
             } else if (!isMoving && duration < 250 && moveDist < 10) {
-                // Single click
-                sendEvent({ type: "click", button: "left" });
-                showRipple(changedTouch, 'left');
+                // Single click (delayed to check for subsequent double taps)
                 lastTapTime = now;
+                const rippleTouch = { clientX: changedTouch.clientX, clientY: changedTouch.clientY };
+                clickDelayTimer = setTimeout(() => {
+                    sendEvent({ type: "click", button: "left" });
+                    showRipple(rippleTouch, 'left');
+                    clickDelayTimer = null;
+                }, DOUBLE_TAP_TIMEOUT);
             }
-            dragStartPending = false;
+        } else if (maxTouches === 2) {
+            // Two-finger tap: trigger right-click if did not scroll and duration is short
+            if (!hasMovedTwoFingers && duration < 350) {
+                const changedTouch = e.changedTouches[0];
+                sendEvent({ type: "click", button: "right" });
+                showRipple(changedTouch, 'right');
+            }
         }
-    }
-
-    // Two Finger Release (Right click check)
-    // If we transition from 2 fingers to 0 fingers quickly
-    if (touches.length === 0 && e.touches.length === 0 && e.changedTouches.length === 2) {
-        // Wait, standard HTML touch events fire touchend for each finger. 
-        // We can track if two fingers were released almost simultaneously
+        
+        // Reset touch session variables
+        maxTouches = 0;
+        hasMovedTwoFingers = false;
     }
 });
 
-// Detect two-finger tap (cleaner approach: check touch event counts)
-touchpad.addEventListener('touchend', (e) => {
-    // If the touch sequence had 2 fingers and ended quickly without moving much
-    if (e.touches.length === 0 && e.changedTouches.length === 2) {
-        // Check duration of the gesture
-        const duration = Date.now() - touchStartTime;
-        if (duration < 250) {
-            sendEvent({ type: "click", button: "right" });
-            showRipple(e.changedTouches[0], 'right');
-        }
+// Rotate Pad Button Event Listener
+const rotateFsBtn = document.getElementById('rotate-fs-btn');
+rotateFsBtn.addEventListener('click', (e) => {
+    rotationAngle = (rotationAngle + 90) % 360;
+    
+    // Clear and set rotation classes
+    touchpad.classList.remove('rotate-90', 'rotate-180', 'rotate-270');
+    if (rotationAngle !== 0) {
+        touchpad.classList.add(`rotate-${rotationAngle}`);
     }
+    
+    showRipple(e, 'left');
 });
 
 // Settings buttons action
@@ -631,6 +695,30 @@ shortcutCopy.addEventListener('touchstart', (e) => handleShortcutTrigger(e, 'cop
 
 shortcutPaste.addEventListener('mousedown', (e) => handleShortcutTrigger(e, 'paste'));
 shortcutPaste.addEventListener('touchstart', (e) => handleShortcutTrigger(e, 'paste'));
+
+// Arrow Keys Event Listeners
+function handleArrowTrigger(e, key) {
+    e.preventDefault();
+    sendEvent({ type: "keyboard", key: key });
+    keyboardInput.focus();
+}
+
+const arrowLeft = document.getElementById('arrow-left');
+const arrowUp = document.getElementById('arrow-up');
+const arrowDown = document.getElementById('arrow-down');
+const arrowRight = document.getElementById('arrow-right');
+
+arrowLeft.addEventListener('mousedown', (e) => handleArrowTrigger(e, 'ArrowLeft'));
+arrowLeft.addEventListener('touchstart', (e) => handleArrowTrigger(e, 'ArrowLeft'));
+
+arrowUp.addEventListener('mousedown', (e) => handleArrowTrigger(e, 'ArrowUp'));
+arrowUp.addEventListener('touchstart', (e) => handleArrowTrigger(e, 'ArrowUp'));
+
+arrowDown.addEventListener('mousedown', (e) => handleArrowTrigger(e, 'ArrowDown'));
+arrowDown.addEventListener('touchstart', (e) => handleArrowTrigger(e, 'ArrowDown'));
+
+arrowRight.addEventListener('mousedown', (e) => handleArrowTrigger(e, 'ArrowRight'));
+arrowRight.addEventListener('touchstart', (e) => handleArrowTrigger(e, 'ArrowRight'));
 
 // Desktop Mouse Support (for testing/development on desktop browsers)
 let isMouseDown = false;
