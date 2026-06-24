@@ -1,83 +1,79 @@
-# Pi Pad - Orange Pi USB HID Web Touchpad & Keyboard
+# Pi Pad
 
-**Pi Pad** is a lightweight FastAPI web application that turns any smartphone or tablet browser into a real-time relative touchpad (with scroll wheel, left/right click, drag lock) and keyboard controller for your host PC, using an Orange Pi emulating a USB HID gadget.
+Make your orange pi (or other linux USB gadget device) act as a touchpad + keyboard. Control via other device in a web broswer.
 
----
-
-## Features
-
-* **Relative Touchpad**: Smooth cursor control mapping across multiple screens, utilizing the host OS's native mouse acceleration.
-* **Native Mouse Scroll Wheel**: Emulates a vertical scroll wheel for smooth scrolling.
-* **Preserved Virtual Keyboard**: Focus-preserved keyboard panel with segmented **Real-time** and **Buffer** typing modes.
-* **IME Shift & Editing Shortcuts**: Dedicated buttons for `Shift` (toggles Chinese/English input state in Microsoft Bopomofo/Zhuyin IME), `Copy` (Ctrl+C), and `Paste` (Ctrl+V) that do not close the soft keyboard on tap.
-* **Custom Precision Sensitivity**: Adjustable slider from `1.0` to `5.0` with `0.5` steps, or tap the badge to type a precise sensitivity number (e.g. `2.3` with `0.1` precision).
-* **Minimalist White Design**: Sharp-cornered white-theme tiles with visual quadrant guides.
-* **PWA Standalone Support**: Add the webpage to your phone's Home Screen to run in full-screen standalone mode without a browser address bar.
-
----
-
-## Hardware Requirements
-
-1. **Orange Pi**: A board supporting USB OTG device mode (e.g., Orange Pi Zero, Orange Pi 3 LTS, Orange Pi 4, etc.).
-2. **USB Data Cable**: Connect the Orange Pi's **USB OTG port** (usually the USB-C or Micro-USB power/data port) to a USB port on the target host PC.
-   * *Note: Ensure your USB cable supports data transfer (not a charge-only cable), and it is plugged into the correct OTG port on the board.*
-
----
-
-## Deployment & Setup on Orange Pi
-
-SSH into your Orange Pi and run the following steps to configure the software:
+## Setup On Orange Pi
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/<YOUR_GITHUB_USERNAME>/pi_pad.git
+git clone https://github.com/ElenBOT/pi_pad.git
 cd pi_pad
 ```
 
-### Step 2: Install Python Dependencies
+### Step 2: Install Python Dependencies & Create Virtual Environment
+A virtual environment ensures that the Python dependencies are cleanly isolated and accessible to the systemd background service:
+
 ```bash
 sudo apt update
-sudo apt install -y python3-pip python3-dev
-pip3 install -r requirements.txt
+sudo apt install -y python3-pip python3-dev python3-venv
+
+# Create a virtual environment and install dependencies
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
 ```
 
 ### Step 3: Register the Auto-Start systemd Service
-By running the server as a systemd background service under the `root` user, the server will start automatically on boot and have the correct privileges to configure the USB gadget kernel nodes.
+Instead of copying a file with hardcoded paths, generate the systemd service file dynamically so it automatically uses your current directory and the virtual environment:
 
 ```bash
-# Link the service configuration to systemd
-sudo ln -sf $(pwd)/pi_pad.service /etc/systemd/system/pi_pad.service
+# Dynamically create the service configuration in systemd
+sudo bash -c "cat <<EOF > /etc/systemd/system/pi_pad.service
+[Unit]
+Description=Pi Pad - Web Touchpad Server
+After=network.target
 
-# Reload daemon, enable auto-start, and launch the service
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$(pwd)
+ExecStart=$(pwd)/venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+# Reload systemd, enable auto-start on boot, and start the service now
 sudo systemctl daemon-reload
 sudo systemctl enable pi_pad
 sudo systemctl restart pi_pad
 ```
 
----
+## Use
 
-## How to Use
+Open a web browser on your smartphone or tablet (connected to the same local network) and navigate to:
+```text
+http://<orange-pi-ip>:8000
+```
 
-1. Ensure the Orange Pi is connected to the host PC via the USB OTG port.
-2. Open a web browser on your smartphone or tablet (connected to the same local network) and navigate to:
-   ```text
-   http://<orange-pi-ip>:8000
+## Troubleshooting & Diagnostics
+
+If the service doesn't start or you can't connect, use these commands on the Orange Pi to find the cause:
+
+1. **Check Service Status**:
+   ```bash
+   sudo systemctl status pi_pad
    ```
-3. Tap **"Init USB HID"** in the web interface. Once the button turns green and says **`USB HID Initialized ✓`**, the USB absolute keyboard and relative mouse nodes are active.
-4. Drag your finger in the white touchpad area to move your PC's cursor!
-5. Tap **"Keypad"** to open the soft keyboard panel and begin typing.
+   This will show if the service is running, disabled, or crashed (e.g. exit code errors).
 
----
+2. **Read Real-time Logs**:
+   ```bash
+   sudo journalctl -u pi_pad -n 50 -f
+   ```
+   This prints the startup output and logs. If there are Python import errors (like `ModuleNotFoundError`) or path errors, they will show up here.
 
-## Gestures Reference
-
-* **Cursor Move**: Single-finger drag.
-* **Left-Click**: Single-finger tap.
-* **Right-Click**: Two-finger tap.
-* **Scroll Page**: Two-finger drag up or down.
-* **Drag Lock (Click-and-Hold)**: Double-tap and hold on the second tap, then drag. Tap once to release.
-
----
-
-## Developer Guide
-If you want to modify this codebase locally on a Windows PC and sync it to the Orange Pi via SCP, please refer to the [Development Documentation (dev_readme.md)](dev_readme.md).
+3. **Check USB Gadget Nodes**:
+   ```bash
+   ls -l /dev/hidg*
+   ```
+   Once you click "Init USB HID" on the webpage, you should see `/dev/hidg0` (keyboard) and `/dev/hidg1` (mouse) with `crw-rw-rw-` permissions.
