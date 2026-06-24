@@ -47,6 +47,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "   User=root" -ForegroundColor Gray
     Write-Host "   WorkingDirectory=\$(pwd)" -ForegroundColor Gray
     Write-Host "   ExecStart=\$(pwd)/venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000" -ForegroundColor Gray
+    Write-Host "   ExecStop=\$(pwd)/setup_gadget.sh --clean" -ForegroundColor Gray
     Write-Host "   Restart=always" -ForegroundColor Gray
     Write-Host "   [Install]" -ForegroundColor Gray
     Write-Host "   WantedBy=multi-user.target" -ForegroundColor Gray

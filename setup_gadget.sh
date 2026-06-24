@@ -1,19 +1,32 @@
 #!/bin/bash
-modprobe libcomposite
 GADGET="/sys/kernel/config/usb_gadget/my_gadget"
 
-echo "Step 1: Cleaning up old configurations..."
-if [ -d "$GADGET" ]; then
-    echo "" > "$GADGET/UDC" 2>/dev/null
-    rm -f "$GADGET/configs/c.1/hid.usb0"
-    rm -f "$GADGET/configs/c.1/hid.usb1"
-    rmdir "$GADGET/configs/c.1/strings/0x409" 2>/dev/null
-    rmdir "$GADGET/configs/c.1" 2>/dev/null
-    rmdir "$GADGET/functions/hid.usb0" 2>/dev/null
-    rmdir "$GADGET/functions/hid.usb1" 2>/dev/null
-    rmdir "$GADGET/strings/0x409" 2>/dev/null
-    rmdir "$GADGET" 2>/dev/null
+cleanup() {
+    echo "Cleaning up USB Gadget configurations..."
+    # 1. Disconnect physical port mapping using absolute path
+    find /sys/kernel/config/usb_gadget -name 'UDC' -exec sh -c 'echo "" > "{}"' \; 2>/dev/null
+
+    # 2. Safely tear down ConfigFS structure bottom-up if directory exists
+    if [ -d "$GADGET" ]; then
+        find "$GADGET/configs" -type l -exec rm -f {} \; 2>/dev/null
+        find "$GADGET" -depth -type d ! -name 'webusb' ! -name 'os_desc' ! -name 'strings' -exec rmdir {} + 2>/dev/null
+        rmdir "$GADGET" 2>/dev/null
+    fi
+    echo "Cleanup complete."
+}
+
+# If --clean or clean is specified, just cleanup and exit
+if [ "$1" = "clean" ] || [ "$1" = "--clean" ]; then
+    cleanup
+    exit 0
 fi
+
+# Normal run: cleanup first, then load module and create
+cleanup
+
+echo "Loading libcomposite..."
+modprobe libcomposite
+
 
 echo "Step 2: Creating new USB Gadget (Combo KM)..."
 mkdir -p "$GADGET"
