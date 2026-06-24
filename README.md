@@ -59,22 +59,32 @@ http://<orange-pi-ip>:8000
 
 ## Troubleshooting & Diagnostics
 
-If the service doesn't start or you can't connect, use these commands on the Orange Pi to find the cause:
+Debug:
+```bash
+# check USB configFS exist
+ls /sys/kernel/config/usb_gadget
 
-1. **Check Service Status**:
-   ```bash
-   sudo systemctl status pi_pad
-   ```
-   This will show if the service is running, disabled, or crashed (e.g. exit code errors).
+# check OTG port UDC
+ls /sys/class/udc
 
-2. **Read Real-time Logs**:
-   ```bash
-   sudo journalctl -u pi_pad -n 50 -f
-   ```
-   This prints the startup output and logs. If there are Python import errors (like `ModuleNotFoundError`) or path errors, they will show up here.
+# check gadget forwarded UDC target 
+cat /sys/kernel/config/usb_gadget/my_gadget/UDC
 
-3. **Check USB Gadget Nodes**:
-   ```bash
-   ls -l /dev/hidg*
-   ```
-   Once you click "Init USB HID" on the webpage, you should see `/dev/hidg0` (keyboard) and `/dev/hidg1` (mouse) with `crw-rw-rw-` permissions.
+# check hid nodes
+ls -l /dev/hidg*
+
+# check configuration
+ls -l /sys/kernel/config/usb_gadget/my_gadget/configs/c.1/
+```
+
+Uninstall
+```bash
+# remove service
+sudo systemctl disable pi_pad
+sudo systemctl stop pi_pad
+sudo systemctl daemon-reload
+sudo rm /etc/systemd/system/pi_pad.service
+
+# remove codes and venv
+sudo rm -rf ~/pi_pad
+```

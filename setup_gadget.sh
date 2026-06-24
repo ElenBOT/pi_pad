@@ -1,5 +1,6 @@
 #!/bin/bash
 GADGET="/sys/kernel/config/usb_gadget/my_gadget"
+STATE_FILE="/var/run/pi_pad_legacy_modules"
 
 cleanup() {
     echo "Cleaning up USB Gadget configurations..."
@@ -13,6 +14,18 @@ cleanup() {
         rmdir "$GADGET" 2>/dev/null
     fi
     echo "Cleanup complete."
+
+    # 3. Restore any conflicting legacy modules that were unloaded
+    if [ -f "$STATE_FILE" ]; then
+        echo "Restoring legacy USB gadget modules..."
+        while IFS= read -r mod; do
+            if [ -n "$mod" ]; then
+                echo "Reloading module $mod..."
+                modprobe "$mod" 2>/dev/null
+            fi
+        done < "$STATE_FILE"
+        rm -f "$STATE_FILE"
+    fi
 }
 
 # If --clean or clean is specified, just cleanup and exit
@@ -24,9 +37,28 @@ fi
 # Normal run: cleanup first, then load module and create
 cleanup
 
+# Detect and unload conflicting legacy modules
+ADD_SERIAL=false
+ADD_ETHER=false
+ADD_STORAGE=false
+
+mkdir -p "$(dirname "$STATE_FILE")"
+truncate -s 0 "$STATE_FILE"
+
+for mod in g_serial g_ether g_mass_storage g_multi; do
+    if lsmod | grep -q "^$mod"; then
+        echo "Conflicting legacy module '$mod' detected. Unloading to free UDC..."
+        echo "$mod" >> "$STATE_FILE"
+        rmmod "$mod" 2>/dev/null
+        
+        if [ "$mod" = "g_serial" ]; then ADD_SERIAL=true; fi
+        if [ "$mod" = "g_ether" ]; then ADD_ETHER=true; fi
+        if [ "$mod" = "g_mass_storage" ]; then ADD_STORAGE=true; fi
+    fi
+done
+
 echo "Loading libcomposite..."
 modprobe libcomposite
-
 
 echo "Step 2: Creating new USB Gadget (Combo KM)..."
 mkdir -p "$GADGET"
@@ -60,12 +92,52 @@ echo 1 > functions/hid.usb1/subclass
 echo 4 > functions/hid.usb1/report_length
 python3 -c "import binascii; open('functions/hid.usb1/report_desc', 'wb').write(binascii.unhexlify('05010902a1010901a100050919012903150025019503750181029501750581030501093009311581257f750895028106050109381581257f750895018106c0c0'))"
 
-echo "Step 5: Binding both interfaces to UDC..."
+# Dynamic addition of functions based on detected legacy modules
+if [ "$ADD_SERIAL" = true ]; then
+    echo "Step 4.5: Setting up CDC ACM Serial interface (acm.usb0)..."
+    mkdir -p functions/acm.usb0
+fi
+
+if [ "$ADD_ETHER" = true ]; then
+    echo "Step 4.6: Setting up CDC ECM Ethernet interface (ecm.usb0)..."
+    mkdir -p functions/ecm.usb0
+    echo "02:00:00:00:00:01" > functions/ecm.usb0/host_addr
+    echo "02:00:00:00:00:02" > functions/ecm.usb0/dev_addr
+fi
+
+if [ "$ADD_STORAGE" = true ]; then
+    echo "Step 4.7: Setting up Mass Storage interface (mass_storage.usb0)..."
+    mkdir -p functions/mass_storage.usb0
+    STORAGE_FILE="/var/lib/pi_pad_storage.img"
+    if [ ! -f "$STORAGE_FILE" ]; then
+        echo "Creating a dummy 64MB storage backing file at $STORAGE_FILE..."
+        mkdir -p "$(dirname "$STORAGE_FILE")"
+        dd if=/dev/zero of="$STORAGE_FILE" bs=1M count=64 2>/dev/null
+        mkfs.vfat "$STORAGE_FILE" 2>/dev/null
+    fi
+    echo "$STORAGE_FILE" > functions/mass_storage.usb0/lun.0/file
+fi
+
+echo "Step 5: Binding interfaces to UDC..."
 ln -s functions/hid.usb0 configs/c.1/
 ln -s functions/hid.usb1 configs/c.1/
+
+if [ -d "functions/acm.usb0" ]; then
+    ln -s functions/acm.usb0 configs/c.1/
+fi
+
+if [ -d "functions/ecm.usb0" ]; then
+    ln -s functions/ecm.usb0 configs/c.1/
+fi
+
+if [ -d "functions/mass_storage.usb0" ]; then
+    ln -s functions/mass_storage.usb0 configs/c.1/
+fi
+
 ls /sys/class/udc > UDC
 
 # Handle permissions for /dev/hidg0 and /dev/hidg1
 chmod 666 /dev/hidg0 /dev/hidg1
 
 echo "Success: Keyboard + Mouse Combo configuration complete!"
+
